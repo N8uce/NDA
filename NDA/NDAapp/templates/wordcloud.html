@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Облако слов и темы</title>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
+    <style>
+        /* Стили для облака слов и тем */
+        .word {
+            cursor: grab;
+            user-select: none;
+            position: absolute;
+        }
+
+        .sortable-topic {
+            min-height: 100px;
+            border: 2px dashed #ccc;
+            padding: 10px;
+            margin: 10px 0;
+            list-style: none;
+        }
+
+        .keyword-item {
+            background: #f0f0f0;
+            padding: 5px;
+            margin: 2px;
+            cursor: move;
+        }
+
+        #wordcloud {
+            position: relative;
+            height: 400px;
+            border: 1px solid #ddd;
+            margin-bottom: 20px;
+        }
+
+        .theme {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Облако слов и темы</h1>
+
+    {% if word_data %}
+        <!-- Облако слов -->
+        <div id="wordcloud" class="sortable-cloud"></div>
+
+        <!-- Контейнер для тем -->
+        <div id="themes-container">
+            {% for topic in topics %}
+                <div class="theme" id="theme-{{ topic.id }}">
+                    <h3>{{ topic.name }}</h3>
+                    <ul class="sortable-topic">
+                        {% for keyword in topic.keywords.all %}
+                            <li class="keyword-item">{{ keyword.word }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endfor %}
+
+            <!-- Новая тема -->
+            <div class="theme" id="new-topic">
+                <h3>Новая тема</h3>
+                <ul class="sortable-topic"></ul>
+            </div>
+        </div>
+<button id="run-task-btn">Запустить обработку</button>
+        <script>
+            document.addEventListener("DOMContentLoaded", function () {
+                const wordData = {{ word_data|safe }};
+                const wordCloudContainer = document.getElementById('wordcloud');
+
+                // Функция для случайного расположения слов
+                function getRandomPosition() {
+                    const x = Math.floor(Math.random() * 80) + 10; // случайная позиция по оси X
+                    const y = Math.floor(Math.random() * 80) + 10; // случайная позиция по оси Y
+                    return { x: x + '%', y: y + '%' };
+                }
+
+                // Генерация облака слов
+                wordData.forEach((item) => {
+                    const wordElement = document.createElement('div');
+                    wordElement.className = 'word';
+                    wordElement.textContent = item.text;
+                    wordElement.setAttribute('draggable', 'true');
+                    wordElement.dataset.word = item.text;
+
+                    const position = getRandomPosition();
+                    wordElement.style.left = position.x;
+                    wordElement.style.top = position.y;
+                    wordElement.style.fontSize = item.weight * 7 + 'px';
+
+                    wordCloudContainer.appendChild(wordElement);
+                });
+
+                // Облако слов (исправлено: теперь слова исчезают после переноса)
+                Sortable.create(wordCloudContainer, {
+                    group: {
+                        name: 'cloud',
+                        pull: 'clone', // Разрешаем копирование
+                        put: false
+                    },
+                    sort: false,
+                    draggable: '.word',
+                    onStart: (evt) => {
+                        evt.item.dataset.word = evt.item.textContent;
+                    }
+                });
+
+                // Темы (исправлено: удаляем слово из облака после переноса)
+                document.querySelectorAll('.sortable-topic').forEach((el) => {
+                    Sortable.create(el, {
+                        group: {
+                            name: 'topics',
+                            put: ['cloud', 'topics']
+                        },
+                        draggable: '.keyword-item',
+                        onAdd: async (evt) => {
+                            const wordElement = evt.item;
+                            const word = wordElement.dataset.word || wordElement.textContent;
+                            const topicElement = evt.to.closest('.theme');
+                            let topicId = topicElement.id.replace('theme-', '');
+
+                            // Убираем стили position, чтобы слово правильно вставлялось
+                            wordElement.style.position = 'static';
+                            wordElement.style.left = 'auto';
+                            wordElement.style.top = 'auto';
+                            wordElement.classList.add('keyword-item');
+
+                            // Если это новая тема — создаём её
+                            if (topicElement.id === 'new-topic') {
+                                const response = await fetch('/add_topic/', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRFToken': '{{ csrf_token }}'
+                                    },
+                                    body: JSON.stringify({ topic_name: 'Новая тема' })
+                                });
+                                const data = await response.json();
+                                if (data.success) {
+                                    topicElement.id = `theme-${data.topic_id}`;
+                                    topicId = data.topic_id;
+                                } else {
+                                    console.error('Ошибка создания темы:', data.error);
+                                    evt.from.appendChild(evt.item);
+                                    return;
+                                }
+                            }
+
+                            // Отправляем запрос на сервер для обновления темы слова
+                            const response = await fetch('/update_keyword_topic/', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRFToken': '{{ csrf_token }}'
+                                },
+                                body: JSON.stringify({
+                                    keyword: word,
+                                    new_topic_id: topicId
+                                })
+                            });
+
+                            if (response.ok) {
+                                // После успешного запроса удаляем слово из облака
+                                document.querySelectorAll('.word').forEach((el) => {
+                                    if (el.textContent === word) {
+                                        el.remove();
+                                    }
+                                });
+                            } else {
+                                evt.from.appendChild(evt.item); // Если ошибка, возвращаем слово обратно
+                            }
+                        }
+                    });
+                });
+            });
+
+
+             document.getElementById("run-task-btn").addEventListener("click", async function() {
+        const button = this;
+        button.disabled = true;
+        button.textContent = "Обработка...";
+
+        const response = await fetch("/run_task/", {
+            method: "POST",
+            headers: {
+                "X-CSRFToken": "{{ csrf_token }}",
+                "Content-Type": "application/json"
+            }
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            alert("Процесс успешно запущен!");
+        } else {
+            alert("Ошибка: " + result.error);
+        }
+
+        button.disabled = false;
+        button.textContent = "Запустить обработку";
+    });
+        </script>
+    {% else %}
+        <p>{{ error }}</p>
+    {% endif %}
+</body>
+</html>
