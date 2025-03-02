@@ -2,211 +2,244 @@
 {% load static %}
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Облако слов и темы</title>
-    <link rel="stylesheet" href="{% static 'css/style.css' %}">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
-    <style>
-        /* Стили для облака слов и тем */
-        .word {
-            cursor: grab;
-            user-select: none;
-            position: absolute;
-        }
-
-        .sortable-topic {
-            min-height: 100px;
-            border: 2px dashed #ccc;
-            padding: 10px;
-            margin: 10px 0;
-            list-style: none;
-        }
-
-        .keyword-item {
-            background: #f0f0f0;
-            padding: 5px;
-            margin: 2px;
-            cursor: move;
-        }
-
-        #wordcloud {
-            position: relative;
-            height: 400px;
-            border: 1px solid #ddd;
-            margin-bottom: 20px;
-        }
-
-        .theme {
-            margin-bottom: 20px;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Облако слов и темы</title>
+  <link rel="stylesheet" href="{% static 'css/style.css' %}">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
+  <style>
+    .word {
+      cursor: grab;
+      user-select: none;
+      position: absolute;
+      opacity: 0;
+      animation: fadeIn 1s forwards;
+    }
+    .word:nth-child(1) { animation-delay: 0s; }
+    .word:nth-child(2) { animation-delay: 0.1s; }
+    .word:nth-child(3) { animation-delay: 0.2s; }
+    .word:nth-child(n+4) { animation-delay: calc(0.1s * var(--word-index)); }
+    @keyframes fadeIn {
+      0% { opacity: 0; transform: scale(0.8); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    .sortable-topic {
+      min-height: 100px;
+      border: 2px dashed #ccc;
+      padding: 10px;
+      margin: 10px 0;
+      list-style: none;
+    }
+    .keyword-item {
+      background: #f0f0f0;
+      padding: 5px;
+      margin: 2px;
+      cursor: move;
+    }
+    #wordcloud {
+      position: relative;
+      height: 400px;
+      border: 1px solid #ddd;
+      margin-bottom: 20px;
+    }
+    .theme {
+      margin-bottom: 20px;
+    }
+  </style>
 </head>
 <body>
-    <h1>Облако слов и темы</h1>
+  <h1>Облако слов и темы</h1>
+  <!-- Кнопка для запуска обработки -->
+  <button id="run-task-btn">Запустить обработку</button>
+  <!-- Облако слов -->
+  <div id="wordcloud"></div>
+  <!-- Контейнер для тем -->
+  <div id="themes-container">
+    {% for topic in topics %}
+      <div class="theme" id="theme-{{ topic.id }}">
+        <h3>{{ topic.name }}</h3>
+        <ul class="sortable-topic" data-topic-id="{{ topic.id }}">
+          {% for keyword in topic.keywords.all %}
+            <li class="keyword-item" data-word="{{ keyword.word }}">{{ keyword.word }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endfor %}
+    <!-- Новая тема -->
+    <div class="theme" id="new-topic">
+      <h3>Новая тема</h3>
+      <ul class="sortable-topic" data-topic-id="new"></ul>
+    </div>
+  </div>
 
-    {% if word_data %}
-        <!-- Облако слов -->
-        <div id="wordcloud" class="sortable-cloud"></div>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const wordCloudContainer = document.getElementById('wordcloud');
+      const runTaskBtn = document.getElementById("run-task-btn");
 
-        <!-- Контейнер для тем -->
-        <div id="themes-container">
-            {% for topic in topics %}
-                <div class="theme" id="theme-{{ topic.id }}">
-                    <h3>{{ topic.name }}</h3>
-                    <ul class="sortable-topic">
-                        {% for keyword in topic.keywords.all %}
-                            <li class="keyword-item">{{ keyword.word }}</li>
-                        {% endfor %}
-                    </ul>
-                </div>
-            {% endfor %}
+      // Функция для случайной позиции слов в облаке
+      function getRandomPosition() {
+        const x = Math.floor(Math.random() * 80) + 10;
+        const y = Math.floor(Math.random() * 80) + 10;
+        return { x: x + '%', y: y + '%' };
+      }
 
-            <!-- Новая тема -->
-            <div class="theme" id="new-topic">
-                <h3>Новая тема</h3>
-                <ul class="sortable-topic"></ul>
-            </div>
-        </div>
-<button id="run-task-btn">Запустить обработку</button>
-        <script>
-            document.addEventListener("DOMContentLoaded", function () {
-                const wordData = {{ word_data|safe }};
-                const wordCloudContainer = document.getElementById('wordcloud');
+      // Функция для создания новой темы – запрашиваем у пользователя имя темы
+      function createTopic(word) {
+        const topicName = prompt("Введите название новой темы для слова: " + word);
+        if (!topicName) return;
+        fetch('/add_keyword/', {
+          method: 'POST',
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": "{{ csrf_token }}"
+          },
+          body: JSON.stringify({ topic: topicName, keyword: word })
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.message) {
+            alert(data.message);
+            // Здесь можно обновить DOM, например, добавить новую тему в список тем
+          } else {
+            alert("Ошибка: " + data.error);
+          }
+        })
+        .catch(error => console.error("Ошибка создания темы:", error));
+      }
 
-                // Функция для случайного расположения слов
-                function getRandomPosition() {
-                    const x = Math.floor(Math.random() * 80) + 10; // случайная позиция по оси X
-                    const y = Math.floor(Math.random() * 80) + 10; // случайная позиция по оси Y
-                    return { x: x + '%', y: y + '%' };
-                }
+      // Функция для обновления ключевого слова и привязки к существующей теме
+      function updateKeywordTopic(word, topicId) {
+        fetch('/update_keyword_topic/', {
+          method: 'POST',
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": "{{ csrf_token }}"
+          },
+          body: JSON.stringify({ keyword: word, new_topic_id: topicId })
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            console.log("Ключевое слово обновлено");
+          } else {
+            alert("Ошибка: " + data.error);
+          }
+        })
+        .catch(error => console.error("Ошибка обновления ключевого слова:", error));
+      }
 
-                // Генерация облака слов
-                wordData.forEach((item) => {
-                    const wordElement = document.createElement('div');
-                    wordElement.className = 'word';
-                    wordElement.textContent = item.text;
-                    wordElement.setAttribute('draggable', 'true');
-                    wordElement.dataset.word = item.text;
-
-                    const position = getRandomPosition();
-                    wordElement.style.left = position.x;
-                    wordElement.style.top = position.y;
-                    wordElement.style.fontSize = item.weight * 7 + 'px';
-
-                    wordCloudContainer.appendChild(wordElement);
-                });
-
-                // Облако слов (исправлено: теперь слова исчезают после переноса)
-                Sortable.create(wordCloudContainer, {
-                    group: {
-                        name: 'cloud',
-                        pull: 'clone', // Разрешаем копирование
-                        put: false
-                    },
-                    sort: false,
-                    draggable: '.word',
-                    onStart: (evt) => {
-                        evt.item.dataset.word = evt.item.textContent;
-                    }
-                });
-
-                // Темы (исправлено: удаляем слово из облака после переноса)
-                document.querySelectorAll('.sortable-topic').forEach((el) => {
-                    Sortable.create(el, {
-                        group: {
-                            name: 'topics',
-                            put: ['cloud', 'topics']
-                        },
-                        draggable: '.keyword-item',
-                        onAdd: async (evt) => {
-                            const wordElement = evt.item;
-                            const word = wordElement.dataset.word || wordElement.textContent;
-                            const topicElement = evt.to.closest('.theme');
-                            let topicId = topicElement.id.replace('theme-', '');
-
-                            // Убираем стили position, чтобы слово правильно вставлялось
-                            wordElement.style.position = 'static';
-                            wordElement.style.left = 'auto';
-                            wordElement.style.top = 'auto';
-                            wordElement.classList.add('keyword-item');
-
-                            // Если это новая тема — создаём её
-                            if (topicElement.id === 'new-topic') {
-                                const response = await fetch('/add_topic/', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        'X-CSRFToken': '{{ csrf_token }}'
-                                    },
-                                    body: JSON.stringify({ topic_name: 'Новая тема' })
-                                });
-                                const data = await response.json();
-                                if (data.success) {
-                                    topicElement.id = `theme-${data.topic_id}`;
-                                    topicId = data.topic_id;
-                                } else {
-                                    console.error('Ошибка создания темы:', data.error);
-                                    evt.from.appendChild(evt.item);
-                                    return;
-                                }
-                            }
-
-                            // Отправляем запрос на сервер для обновления темы слова
-                            const response = await fetch('/update_keyword_topic/', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'X-CSRFToken': '{{ csrf_token }}'
-                                },
-                                body: JSON.stringify({
-                                    keyword: word,
-                                    new_topic_id: topicId
-                                })
-                            });
-
-                            if (response.ok) {
-                                // После успешного запроса удаляем слово из облака
-                                document.querySelectorAll('.word').forEach((el) => {
-                                    if (el.textContent === word) {
-                                        el.remove();
-                                    }
-                                });
-                            } else {
-                                evt.from.appendChild(evt.item); // Если ошибка, возвращаем слово обратно
-                            }
-                        }
-                    });
-                });
-            });
-
-
-             document.getElementById("run-task-btn").addEventListener("click", async function() {
-        const button = this;
-        button.disabled = true;
-        button.textContent = "Обработка...";
-
-        const response = await fetch("/run_task/", {
-            method: "POST",
-            headers: {
-                "X-CSRFToken": "{{ csrf_token }}",
-                "Content-Type": "application/json"
-            }
+      // Генерация облака слов
+      function generateWordCloud(words) {
+        // Очищаем контейнер облака слов перед добавлением новых
+        wordCloudContainer.innerHTML = '';
+        words.forEach((item, index) => {
+          const wordElement = document.createElement('div');
+          wordElement.className = 'word';
+          wordElement.textContent = item.text;
+          wordElement.setAttribute('draggable', 'true');
+          wordElement.dataset.word = item.text;
+          // Устанавливаем уникальный индекс для задержки анимации
+          wordElement.style.setProperty('--word-index', index);
+          const position = getRandomPosition();
+          wordElement.style.left = position.x;
+          wordElement.style.top = position.y;
+          wordElement.style.fontSize = item.weight * 7 + 'px';
+          wordCloudContainer.appendChild(wordElement);
         });
+        // Инициализация Sortable для облака слов (только для клонирования)
+        Sortable.create(wordCloudContainer, {
+          group: { name: 'cloud', pull: 'clone', put: false },
+          sort: false,
+          draggable: '.word'
+        });
+      }
 
-        const result = await response.json();
-        if (result.success) {
-            alert("Процесс успешно запущен!");
-        } else {
+      // Функция для загрузки слов в облако
+      function loadWordCloud() {
+        fetch("/get_word_cloud/")
+          .then(response => response.json())
+          .then(data => {
+            if (data.word_data) {
+              generateWordCloud(data.word_data);
+            }
+          })
+          .catch(error => console.error("Ошибка при загрузке облака слов:", error));
+      }
+
+      // Загружаем облако слов при старте страницы
+      loadWordCloud();
+
+      // Инициализация Sortable для каждого списка тем
+      document.querySelectorAll('.sortable-topic').forEach(function(topicList) {
+        Sortable.create(topicList, {
+          group: { name: 'cloud', pull: false, put: true },
+          animation: 150,
+          onAdd: function(evt) {
+            const word = evt.item.dataset.word;
+            const topicId = evt.to.dataset.topicId;
+            // Приводим элемент к виду, подходящему для списка темы
+            evt.item.classList.remove('word');
+            evt.item.classList.add('keyword-item');
+            // Сбрасываем абсолютное позиционирование и стили, чтобы элемент вписался в список
+            evt.item.style.position = 'static';
+            evt.item.style.left = '';
+            evt.item.style.top = '';
+            evt.item.style.opacity = 1;
+            // Если слово перетаскивают в список "Новая тема"
+            if (topicId === "new") {
+              createTopic(word);
+              // Удаляем элемент из списка, если тема создается отдельно
+              evt.item.parentNode.removeChild(evt.item);
+            } else {
+              updateKeywordTopic(word, topicId);
+            }
+          }
+        });
+      });
+
+      // Функция запуска обработки заданий
+      runTaskBtn.addEventListener("click", function () {
+        runTaskBtn.disabled = true;
+        runTaskBtn.textContent = "Обработка...";
+        fetch("/run_task/", {
+          method: "POST",
+          headers: {
+            "X-CSRFToken": "{{ csrf_token }}",
+            "Content-Type": "application/json"
+          }
+        })
+        .then(response => response.json())
+        .then(result => {
+          if (result.success) {
+            // После завершения алгоритма очищаем и генерируем облако слов заново
+            generateWordCloud(result.words);
+            alert("Процесс успешно завершен!");
+          } else {
             alert("Ошибка: " + result.error);
-        }
-
-        button.disabled = false;
-        button.textContent = "Запустить обработку";
+          }
+          runTaskBtn.disabled = false;
+          runTaskBtn.textContent = "Запустить обработку";
+        })
+        .catch(error => {
+          console.error("Ошибка при запуске обработки:", error);
+          runTaskBtn.disabled = false;
+          runTaskBtn.textContent = "Запустить обработку";
+        });
+      });
     });
-        </script>
-    {% else %}
-        <p>{{ error }}</p>
-    {% endif %}
+
+    // Автоскроллинг страницы при перетаскивании
+    document.addEventListener('dragover', function(e) {
+      const sensitivity = 50; // зона в пикселях у верхнего и нижнего края
+      const scrollSpeed = 10; // скорость прокрутки (в пикселях)
+
+      if (e.clientY > window.innerHeight - sensitivity) {
+        window.scrollBy(0, scrollSpeed);
+      } else if (e.clientY < sensitivity) {
+        window.scrollBy(0, -scrollSpeed);
+      }
+    });
+  </script>
 </body>
 </html>

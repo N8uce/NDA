@@ -61,7 +61,7 @@ def train_model():
 
     # Обучение
     model.train()
-    for epoch in range(1000):  # Обучаем 1000 эпох
+    for epoch in range(900):  # Обучаем 1000 эпох
         optimizer.zero_grad()
 
         outputs = model(X_train, labels=y_train)
@@ -69,7 +69,7 @@ def train_model():
         loss.backward()
         optimizer.step()
 
-        print(f"Epoch {epoch + 1}/{1000}, Loss: {loss.item()}")
+        print(f"Epoch {epoch + 1}/{900}, Loss: {loss.item()}")
 
     # Сохраняем модель и токенизатор
     os.makedirs(MODEL_PATH, exist_ok=True)  # Убедимся, что директория существует
@@ -83,8 +83,9 @@ def train_model():
 
 
 # Функция для загрузки модели
+# Функция для загрузки модели
 def load_model():
-    if os.path.exists(MODEL_PATH):
+    if os.path.exists(MODEL_PATH) and os.path.exists(os.path.join(MODEL_PATH, 'config.json')):
         # Загружаем модель и токенизатор
         model = BertForSequenceClassification.from_pretrained(MODEL_PATH)
         tokenizer = BertTokenizer.from_pretrained(MODEL_PATH)
@@ -98,6 +99,7 @@ def load_model():
     else:
         print("⚠️ Модель не найдена, начинаем обучение заново.")
         return train_model()  # Если модель не найдена, начинаем обучение заново
+
 
 
 # Функция для предсказания темы задания
@@ -124,31 +126,68 @@ def write_to_file(task_text, predicted_topic, confidence):
         print(f"✅ Задание записано в файл: '{task_text[:30]}...' в тему '{predicted_topic}' (точность {confidence:.2f})")
 
 
+
+from django.core.mail import send_mail
+from django.conf import settings
+
+def send_task_email(assignee_name, assignee_email, task_text, predicted_topic, confidence):
+    subject = f'Задание распределено по теме "{predicted_topic}"'
+    message = f'Здравствуйте, {assignee_name}!\n\nВаше задание: "{task_text[:50]}..." было распределено по теме "{predicted_topic}" с точностью {confidence:.2f}.\n\nПожалуйста, приступайте к выполнению задания.'
+    from_email = settings.DEFAULT_FROM_EMAIL
+
+    try:
+        send_mail(subject, message, from_email, [assignee_email])
+        print(f"✅ Письмо отправлено на {assignee_email}")
+    except Exception as e:
+        print(f"⚠️ Ошибка при отправке письма: {e}")
+
+
 # Основная функция обработки заданий
+# Изменение в process_tasks
 def process_tasks():
     model, tokenizer, label_encoder = load_model()
     if not model:
         print("⚠️ Нет данных для загрузки модели!")
         return
 
-    # Получаем все задания, которые еще не распределены
-    unassigned_tasks = Task.objects.filter(assignedtask__isnull=True)
+    # Получаем все задания, которые еще не обработаны (статус 'не обработано')
+    unassigned_tasks = Task.objects.filter(status__in=["не обработано", "в облаке слов"])
 
     for task in unassigned_tasks:
         # Классифицируем задание и получаем тему и уверенность
         predicted_topic, confidence = classify_task(task.text, model, tokenizer, label_encoder)
 
-        if confidence >= 0.6:
+        if confidence >= 0.7:
             # Находим тему по предсказанному имени
             topic = Topic.objects.filter(name=predicted_topic).first()
             if topic:
-                # Создаем запись в AssignedTask
-                AssignedTask.objects.create(task=task, topic=topic, confidence=confidence)
-                task.delete()  # Удаляем задание из общего списка
-                print(f"✅ Задание '{task.text[:30]}...' распределено в тему '{predicted_topic}' (точность {confidence:.2f})")
+                # Создаем запись в AssignedTask с дополнительными полями
+                AssignedTask.objects.create(
+                    task=task,
+                    topic=topic,
+                    confidence=confidence,
+                    assignee_name=task.assignee_name,  # Добавляем имя исполнителя
+                    assignee_email=task.assignee_email  # Добавляем email исполнителя
+                )
+
+                # Обновляем статус задачи на 'обработано'
+                task.status = 'обработано'
+                task.save()  # Сохраняем изменения
+
+                print(
+                    f"✅ Задание '{task.text[:30]}...' распределено в тему '{predicted_topic}' (точность {confidence:.2f})")
 
                 # Записываем задание в файл
                 write_to_file(task.text, predicted_topic, confidence)
+                send_task_email(task.assignee_name, task.assignee_email, task.text, predicted_topic, confidence)
+
         else:
-            # Если уверенность меньше порога, оставляем задание без изменения
-            print(f"⚠️ Задание '{task.text[:30]}...' осталось без темы (точность {confidence:.2f})")
+            # Если уверенность меньше порога, задание отправляется в облако слов
+            task.status = 'в облаке слов'
+            task.keywords_sent_to_wordcloud = True
+            task.save()  # Сохраняем изменения
+
+            print(f"⚠️ Задание '{task.text[:30]}...' отправлено в облако слов (точность {confidence:.2f})")
+
+
+

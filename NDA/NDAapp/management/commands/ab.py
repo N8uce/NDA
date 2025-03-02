@@ -30,14 +30,26 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS("✅ Данные для файла A загружены!"))
 
-        # Загрузка данных для файла B (задания)
+        # Загрузка данных для файла B (задания с исполнителями)
         with open(file_b_path, mode='r', encoding='utf-8') as file_b:
             reader = csv.reader(file_b)
             for row in reader:
-                task_text = row[0]
+                if len(row) < 3:
+                    self.stdout.write(self.style.WARNING(f"⚠️ Пропущена строка (недостаточно данных): {row}"))
+                    continue
+
+                task_text, assignee_name, assignee_email = row
 
                 # Проверка, существует ли уже такое задание
-                if not Task.objects.filter(text=task_text).exists():
-                    Task.objects.create(text=task_text)
+                task, created = Task.objects.get_or_create(
+                    text=task_text,
+                    defaults={"assignee_name": assignee_name, "assignee_email": assignee_email}
+                )
+
+                # Если задание уже существует, но у него нет имени или email, обновляем их
+                if not created and (not task.assignee_name or not task.assignee_email):
+                    task.assignee_name = assignee_name
+                    task.assignee_email = assignee_email
+                    task.save()
 
         self.stdout.write(self.style.SUCCESS("✅ Данные для файла B загружены!"))

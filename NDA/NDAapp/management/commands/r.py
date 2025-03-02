@@ -1,4 +1,5 @@
 import csv
+import random
 
 # Данные для файла A (темы и ключевые слова)
 topics_data = {
@@ -28,6 +29,19 @@ tasks_data = [
     "Оптимизируйте работу кода для обработки больших файлов ускорив выполнение в 5 раз.",
 ]
 
+# Список случайных исполнителей
+assignees = [
+    ("Иван Петров", "ivan.petrov@example.com"),
+    ("Анна Смирнова", "anna.smirnova@example.com"),
+    ("Сергей Иванов", "sergey.ivanov@example.com"),
+    ("Мария Кузнецова", "maria.kuznetsova@example.com"),
+    ("Алексей Соколов", "alexey.sokolov@example.com"),
+    ("Ольга Морозова", "olga.morozova@example.com"),
+    ("Дмитрий Васильев", "dmitry.vasilev@example.com"),
+    ("Елена Тихонова", "elena.tikhonova@example.com"),
+    ("Павел Николаев", "pavel.nikolaev@example.com"),
+    ("Наталья Орлова", "natalia.orlova@example.com"),
+]
 
 # Создание файла A (без заголовков)
 with open('file_a.csv', mode='w', newline='', encoding='utf-8-sig') as file_a:
@@ -37,10 +51,11 @@ with open('file_a.csv', mode='w', newline='', encoding='utf-8-sig') as file_a:
 
 print("✅ Файл A (темы и ключевые слова) создан без заголовков!")
 
-# Создание файла B (без заголовков)
+# Создание файла B (с именем и email исполнителя)
 with open('file_b.csv', mode='w', newline='', encoding='utf-8-sig') as file_b:
     writer = csv.writer(file_b, quoting=csv.QUOTE_MINIMAL)
     for task_text in tasks_data:
-        writer.writerow([task_text])
+        assignee_name, assignee_email = random.choice(assignees)  # Случайный исполнитель
+        writer.writerow([task_text, assignee_name, assignee_email])
 
-print("✅ Файл B (задания) создан без заголовков!")
+print("✅ Файл B (задания) создан с именами и email исполнителей!")

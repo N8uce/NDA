@@ -28,5 +28,6 @@ urlpatterns = [
     path("add_keyword/", views.add_keyword, name="add_keyword"),
     path('api/get_topics/', views.get_topics, name='get_topics'),
     path('update_keyword_topic/', views.update_keyword_topic, name='update_keyword_topic'),
+    path('get_word_cloud/', views.get_word_cloud, name='get_word_cloud'),
     path("run_task/", views.run_task, name="run_task"),
 ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
