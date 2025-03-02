@@ -150,5 +150,5 @@ EMAIL_HOST = 'smtp.mail.ru'  # SMTP сервер Mail.ru
 EMAIL_PORT = 587  # Для безопасного соединения (TLS)
 EMAIL_USE_TLS = True  # Включение шифрования
 EMAIL_HOST_USER = 'nikita_efimov_2003@mail.ru'  # адрес на Mail.ru
-EMAIL_HOST_PASSWORD = '8rC9QgFJ9GF9HHbP7Qbt'  # Пароль от почты
+EMAIL_HOST_PASSWORD = ''  # Пароль от почты
 DEFAULT_FROM_EMAIL = 'nikita_efimov_2003@mail.ru'  # Почта, с которой будут отправляться письма
